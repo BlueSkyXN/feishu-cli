@@ -1,0 +1,121 @@
+# CI 工作流：push / PR / 手动触发时执行测试、静态检查和交叉编译验证
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Verify module checksums
+        run: go mod verify
+
+      - name: Verify gofmt
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          files="$(gofmt -l ./cmd ./internal)"
+          if [ -n "$files" ]; then
+            echo "::error::以下文件需要 gofmt 格式化："
+            echo "$files"
+            exit 1
+          fi
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Run tests
+        run: go test -count=1 -shuffle=on ./...
+
+      - name: Run race tests
+        if: runner.os == 'Linux'
+        run: go test -race -count=1 ./internal/converter/... ./internal/auth/... ./internal/config/...
+
+      - name: Cross-build verification
+        if: runner.os == 'Linux'
+        env:
+          CGO_ENABLED: 0
+        run: |
+          set -euo pipefail
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
+            goos="${target%/*}"
+            goarch="${target#*/}"
+            echo "::group::Build ${goos}/${goarch}"
+            GOOS="$goos" GOARCH="$goarch" go build -trimpath -o /dev/null .
+            echo "::endgroup::"
+          done
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run tests with coverage
+        run: go test -coverprofile=coverage.out ./...
+
+      - name: Summarize coverage
+        run: |
+          go tool cover -func=coverage.out | tee coverage.txt
+          TOTAL="$(awk '/^total:/ { print $3 }' coverage.txt)"
+          {
+            echo "### 测试覆盖率"
+            echo ""
+            echo "- 总覆盖率: \`${TOTAL}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: |
+            coverage.out
+            coverage.txt
+          retention-days: 14

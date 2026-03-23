@@ -27,8 +27,8 @@ const (
 // LoginOptions 登录选项
 type LoginOptions struct {
 	Port      int
-	Manual    bool   // 强制手动粘贴模式
-	NoManual  bool   // 强制本地回调模式
+	Manual    bool // 强制手动粘贴模式
+	NoManual  bool // 强制本地回调模式
 	AppID     string
 	AppSecret string
 	BaseURL   string
@@ -311,11 +311,11 @@ func ExchangeToken(code, appID, appSecret, redirectURI, baseURL string) (*TokenS
 	tokenURL := baseURL + "/open-apis/authen/v2/oauth/token"
 
 	body := map[string]string{
-		"grant_type":   "authorization_code",
-		"code":         code,
-		"client_id":    appID,
+		"grant_type":    "authorization_code",
+		"code":          code,
+		"client_id":     appID,
 		"client_secret": appSecret,
-		"redirect_uri": redirectURI,
+		"redirect_uri":  redirectURI,
 	}
 
 	return doTokenRequest(tokenURL, body)
