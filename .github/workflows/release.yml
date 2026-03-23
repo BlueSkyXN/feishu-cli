@@ -11,6 +11,11 @@ on:
         description: '版本号（不带 v 前缀，可选）'
         required: false
         type: string
+      publish:
+        description: '是否发布到 GitHub Release'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -36,6 +41,7 @@ jobs:
           REF_TYPE: ${{ github.ref_type }}
           REF_NAME: ${{ github.ref_name }}
           INPUT_VERSION: ${{ github.event.inputs.version }}
+          INPUT_PUBLISH: ${{ github.event.inputs.publish }}
         run: |
           set -euo pipefail
           if [[ "$REF_TYPE" == "tag" ]]; then
@@ -48,6 +54,8 @@ jobs:
 
           publish=false
           if [[ "$REF_TYPE" == "tag" && "$REF_NAME" == v* ]]; then
+            publish=true
+          elif [[ "${INPUT_PUBLISH:-}" == "true" && -n "${INPUT_VERSION:-}" ]]; then
             publish=true
           fi
 
